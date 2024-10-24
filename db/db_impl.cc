@@ -991,6 +991,32 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         (int)last_sequence_for_key, (int)compact->smallest_snapshot);
 #endif
 
+    //TTL ToDo: modify to add TTL check
+    // 添加过期时间的检查逻辑
+    if (!drop) {
+      // 获取值
+      Slice value = input->value();
+
+      // 检查值是否包含过期时间戳（假设过期时间戳存储在值的前8个字节）
+      if (value.size() >= sizeof(uint64_t)) {
+        const char* ptr = value.data();
+        uint64_t expiration_time = DecodeFixed64(ptr);
+
+        // 获取当前时间（单位：秒）
+        uint64_t current_time = env_->NowMicros() / 1000000;
+
+        // 如果当前时间超过过期时间，则丢弃该键值对
+        if (current_time > expiration_time) {
+          drop = true;
+        } else {
+          // 未过期，继续处理
+        }
+      } else {
+        // 值中没有过期时间戳，视为未过期，继续处理
+      }
+    }
+    //finish modify
+
     if (!drop) {
       // Open output file if necessary
       if (compact->builder == nullptr) {
@@ -1117,6 +1143,9 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
   return versions_->MaxNextLevelOverlappingBytes();
 }
 
+
+// TTL ToDo: modify Get function to implement TTL check
+
 Status DBImpl::Get(const ReadOptions& options, const Slice& key,
                    std::string* value) {
   Status s;
@@ -1154,6 +1183,24 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
     }
     mutex_.Lock();
   }
+
+  // TTL ToDo : add check for TTL
+  // 如果从 memtable、imm 或 sstable 获取到了数据，则需要检查TTL
+  if (s.ok()) {
+    // 从 value 中解析出过期时间戳（假设值存储格式为：[过期时间戳][实际值]）
+    uint64_t expiration_time = ParseExpirationTime(*value);
+    uint64_t current_time = GetCurrentTime();
+
+    // 如果当前时间已经超过过期时间，则认为数据过期，返回 NotFound
+    if (current_time > expiration_time) {
+      s = Status::NotFound("Key expired");
+    } else {
+      // 数据未过期，解析出实际的值
+      *value = ParseActualValue(*value);
+    }
+  }
+
+  //finish modify
 
   if (have_stat_update && current->UpdateStats(stats)) {
     MaybeScheduleCompaction();
@@ -1197,6 +1244,14 @@ void DBImpl::ReleaseSnapshot(const Snapshot* snapshot) {
 Status DBImpl::Put(const WriteOptions& o, const Slice& key, const Slice& val) {
   return DB::Put(o, key, val);
 }
+
+// TTL ToDo: add DBImpl for Put
+// 新增支持TTL的Put方法
+Status DBImpl::Put(const WriteOptions& o, const Slice& key, const Slice& val, uint64_t ttl) {
+  return DB::Put(o, key, val, ttl);
+}
+
+//finish modify
 
 Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
   return DB::Delete(options, key);
@@ -1491,6 +1546,26 @@ Status DB::Put(const WriteOptions& opt, const Slice& key, const Slice& value) {
   return Write(opt, &batch);
 }
 
+//TTL ToDo: add a func for TTL Put
+Status DB::Put(const WriteOptions& opt, const Slice& key, const Slice& value, uint64_t ttl) {
+  // 获取当前时间并计算过期时间戳
+  uint64_t expiration_time = GetCurrentTime() + ttl;
+
+  // 将过期时间戳和值一起存储（假设值前面附加过期时间戳）
+  std::string new_value;
+  AppendExpirationTime(&new_value, expiration_time);
+  new_value.append(value.data(), value.size());
+
+  // 构造 WriteBatch，并将键值对加入到批处理中
+  WriteBatch batch;
+  batch.Put(key, new_value);
+
+  // 执行写操作
+  return Write(opt, &batch);
+}
+//finish modify
+
+
 Status DB::Delete(const WriteOptions& opt, const Slice& key) {
   WriteBatch batch;
   batch.Delete(key);
@@ -1574,5 +1649,34 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
   }
   return result;
 }
+
+// TTL ToDo: add func for TTL get
+uint64_t ParseExpirationTime(const std::string& value) {
+  // 假设时间戳存储在值的前8个字节（64位整数）
+  uint64_t expiration_time;
+  memcpy(&expiration_time, value.data(), sizeof(uint64_t));
+  return expiration_time;
+}
+
+std::string ParseActualValue(const std::string& value) {
+  // 假设实际值存储在过期时间戳之后
+  return value.substr(sizeof(uint64_t));
+}
+
+//finish modify
+
+//TTL ToDo : add func for TTL Put
+
+void AppendExpirationTime(std::string* value, uint64_t expiration_time) {
+  // 将过期时间戳（64位整数）附加到值的前面
+  value->append(reinterpret_cast<const char*>(&expiration_time), sizeof(expiration_time));
+}
+
+uint64_t GetCurrentTime() {
+  // 返回当前的Unix时间戳
+  return static_cast<uint64_t>(time(nullptr));
+}
+
+//finish modify
 
 }  // namespace leveldb
