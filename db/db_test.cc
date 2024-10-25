@@ -2119,7 +2119,7 @@ class ModelDB : public DB {
   }
   // TTL ToDo: add DBImpl for Put
   // 新增支持TTL的Put方法
-  Status Put(const WriteOptions& o, const Slice& key, const Slice& val, uint64_t ttl) {
+  Status Put(const WriteOptions& o, const Slice& key, const Slice& val, uint64_t ttl) override {
     return DB::Put(o, key, val, ttl);
   }
 
