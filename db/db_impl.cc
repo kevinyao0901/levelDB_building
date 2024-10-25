@@ -11,9 +11,6 @@
 #include <set>
 #include <string>
 #include <vector>
-#include <cstring>  // For memcpy
-#include <ctime>    // For std::time
-
 
 #include "db/builder.h"
 #include "db/db_iter.h"
@@ -37,7 +34,6 @@
 #include "util/coding.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
-#include "db_impl.h"
 
 namespace leveldb {
 
@@ -1012,6 +1008,20 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         drop = true;
       }
 
+      // TTL ToDo: add expiration time check
+      if (!drop) {  // 如果还未被标记为丢弃
+        Slice value = input->value();
+        if (value.size() >= sizeof(uint64_t)) {
+          const char* ptr = value.data();
+          uint64_t expiration_time = DecodeFixed64(ptr);
+          uint64_t current_time = env_->NowMicros() / 1000000;
+
+          if (current_time > expiration_time) {
+            drop = true;  // 过期的键值对，标记为丢弃
+          }
+        }
+      }
+
       last_sequence_for_key = ikey.sequence;
     }
 #if 0
@@ -1023,32 +1033,6 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         compact->compaction->IsBaseLevelForKey(ikey.user_key),
         (int)last_sequence_for_key, (int)compact->smallest_snapshot);
 #endif
-
-    //TTL ToDo: modify to add TTL check
-    // 添加过期时间的检查逻辑
-    if (!drop) {
-      // 获取值
-      Slice value = input->value();
-
-      // 检查值是否包含过期时间戳（假设过期时间戳存储在值的前8个字节）
-      if (value.size() >= sizeof(uint64_t)) {
-        const char* ptr = value.data();
-        uint64_t expiration_time = DecodeFixed64(ptr);
-
-        // 获取当前时间（单位：秒）
-        uint64_t current_time = env_->NowMicros() / 1000000;
-
-        // 如果当前时间超过过期时间，则丢弃该键值对
-        if (current_time > expiration_time) {
-          drop = true;
-        } else {
-          // 未过期，继续处理
-        }
-      } else {
-        // 值中没有过期时间戳，视为未过期，继续处理
-      }
-    }
-    //finish modify
 
     if (!drop) {
       // Open output file if necessary
@@ -1175,9 +1159,6 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
   MutexLock l(&mutex_);
   return versions_->MaxNextLevelOverlappingBytes();
 }
-
-
-// TTL ToDo: modify Get function to implement TTL check
 
 Status DBImpl::Get(const ReadOptions& options, const Slice& key,
                    std::string* value) {
@@ -1598,7 +1579,6 @@ Status DB::Put(const WriteOptions& opt, const Slice& key, const Slice& value, ui
 }
 //finish modify
 
-
 Status DB::Delete(const WriteOptions& opt, const Slice& key) {
   WriteBatch batch;
   batch.Delete(key);
@@ -1682,6 +1662,5 @@ Status DestroyDB(const std::string& dbname, const Options& options) {
   }
   return result;
 }
-
 
 }  // namespace leveldb

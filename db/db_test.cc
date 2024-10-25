@@ -2117,6 +2117,13 @@ class ModelDB : public DB {
   Status Put(const WriteOptions& o, const Slice& k, const Slice& v) override {
     return DB::Put(o, k, v);
   }
+  // TTL ToDo: add DBImpl for Put
+  // 新增支持TTL的Put方法
+  Status Put(const WriteOptions& o, const Slice& key, const Slice& val, uint64_t ttl) {
+    return DB::Put(o, key, val, ttl);
+  }
+
+  //finish modify
   Status Delete(const WriteOptions& o, const Slice& key) override {
     return DB::Delete(o, key);
   }
