@@ -348,6 +348,7 @@ class DBTest : public testing::Test {
   Status Put(const std::string& k, const std::string& v) {
     return db_->Put(WriteOptions(), k, v);
   }
+  
 
   Status Delete(const std::string& k) { return db_->Delete(WriteOptions(), k); }
 

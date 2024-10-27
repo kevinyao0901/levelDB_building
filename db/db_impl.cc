@@ -42,7 +42,7 @@ const int kNumNonTableCacheFiles = 10;
 //TTL ToDo : add func for TTL Put
 
 void AppendExpirationTime(std::string* value, uint64_t expiration_time) {
-  // 将过期时间戳（64位整数）附加到值的前面
+  // 直接将小端序的过期时间戳（64位整数）附加到值的前面
   value->append(reinterpret_cast<const char*>(&expiration_time), sizeof(expiration_time));
 }
 
@@ -53,11 +53,11 @@ uint64_t GetCurrentTime() {
 
 // 解析过期时间戳
 uint64_t ParseExpirationTime(const std::string& value) {
-  // 假设过期时间戳在值的前 8 字节，以大端序存储
+  // 假设过期时间戳在值的前 8 字节
   assert(value.size() >= sizeof(uint64_t));
   uint64_t expiration_time;
   memcpy(&expiration_time, value.data(), sizeof(uint64_t));
-  return expiration_time;
+  return expiration_time;  // 直接返回小端序的值
 }
 
 // 解析出实际的值（去掉前面的过期时间戳部分）
@@ -1207,14 +1207,14 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
 
     // 如果当前时间已经超过过期时间，则认为数据过期，返回 NotFound
     if (current_time > expiration_time) {
-      s = Status::NotFound("Key expired");
+      s = Status::NotFound(Slice());
     } else {
       // 数据未过期，解析出实际的值
       *value = ParseActualValue(*value);
     }
   }
 
-  //finish modify
+  // //finish modify
 
   if (have_stat_update && current->UpdateStats(stats)) {
     MaybeScheduleCompaction();

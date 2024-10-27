@@ -73,6 +73,8 @@ class MemTableIterator : public Iterator {
 
 Iterator* MemTable::NewIterator() { return new MemTableIterator(&table_); }
 
+
+
 void MemTable::Add(SequenceNumber s, ValueType type, const Slice& key,
                    const Slice& value) {
   // Format of an entry is concatenation of:
@@ -124,6 +126,23 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
         case kTypeValue: {
           Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
           value->assign(v.data(), v.size());
+
+          // TTL ToDo :检查：从 value 中解析出过期时间戳并与当前时间比较
+          assert(value->size() >= sizeof(uint64_t));
+          uint64_t expiration_time;
+          memcpy(&expiration_time, value->data(), sizeof(uint64_t)); // 解析出过期时间戳
+          uint64_t current_time = static_cast<uint64_t>(time(nullptr));  // 获取当前时间
+
+          // 如果当前时间已超过过期时间，设置状态为 NotFound 表示数据过期
+          if (current_time > expiration_time) {
+            *s = Status::NotFound(Slice());
+            return true;
+          } else {
+            // 数据未过期，解析出实际的值部分，去掉过期时间戳
+            *value = value->substr(sizeof(uint64_t));
+          }
+
+          //finish modify
           return true;
         }
         case kTypeDeletion:
