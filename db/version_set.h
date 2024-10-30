@@ -252,6 +252,8 @@ class VersionSet {
   bool NeedsCompaction() const {
     Version* v = current_;
     return (v->compaction_score_ >= 1) || (v->file_to_compact_ != nullptr);
+    //TTL ToDo
+    //return false;
   }
 
   // Add all files listed in any live version to *live.

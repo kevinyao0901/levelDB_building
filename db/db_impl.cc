@@ -11,6 +11,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <iostream>
 
 #include "db/builder.h"
 #include "db/db_iter.h"
@@ -763,7 +764,7 @@ void DBImpl::BackgroundCompaction() {
   Status status;
   if (c == nullptr) {
     // Nothing to do
-  } else if (!is_manual && c->IsTrivialMove()) {
+  } else if (!is_manual && c->IsTrivialMove() && 1==2) {
     // Move file to next level
     assert(c->num_input_files(0) == 1);
     FileMetaData* f = c->input(0, 0);
@@ -924,8 +925,15 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 }
 
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
+  std::cout<< "start compact" << std::endl;
   const uint64_t start_micros = env_->NowMicros();
   int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
+
+  //TTL ToDo
+  // 定义要检测的目标键
+  Slice target_key = "10000";
+  int dropped_keys_count = 0; // 初始化计数器
+  int total_keys_count = 0;
 
   Log(options_.info_log, "Compacting %d@%d + %d@%d files",
       compact->compaction->num_input_files(0), compact->compaction->level(),
@@ -935,6 +943,17 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   assert(versions_->NumLevelFiles(compact->compaction->level()) > 0);
   assert(compact->builder == nullptr);
   assert(compact->outfile == nullptr);
+
+  //TTL ToDo
+  // {
+  //   //MutexLock l(&mutex_);
+  //   if (has_imm_.load(std::memory_order_relaxed)) {
+  //     CompactMemTable();
+  //     background_work_finished_signal_.SignalAll();
+  //   }
+  // }
+  //finish modify
+
   if (snapshots_.empty()) {
     compact->smallest_snapshot = versions_->LastSequence();
   } else {
@@ -947,6 +966,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   mutex_.Unlock();
 
   input->SeekToFirst();
+  std::cout << "Compation first key: " << input->key().ToString() << std::endl;
   Status status;
   ParsedInternalKey ikey;
   std::string current_user_key;
@@ -1009,21 +1029,45 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       }
 
       // TTL ToDo: add expiration time check
-      if (!drop) {  // 如果还未被标记为丢弃
-        Slice value = input->value();
-        if (value.size() >= sizeof(uint64_t)) {
-          const char* ptr = value.data();
-          uint64_t expiration_time = DecodeFixed64(ptr);
-          uint64_t current_time = env_->NowMicros() / 1000000;
-
-          if (current_time > expiration_time) {
-            drop = true;  // 过期的键值对，标记为丢弃
-          }
-        }
+      // 检查是否为目标键
+      if (key == target_key) {
+          // 输出调试信息
+          Log(options_.info_log, "Found target key during compaction: %s\n", key.ToString().c_str());
       }
+
+      Slice value = input->value();
+      if (value.size() >= sizeof(uint64_t)) {
+        const char* ptr = value.data();
+        uint64_t expiration_time = DecodeFixed64(ptr);
+        uint64_t current_time = env_->NowMicros() / 1000000;
+
+        if (current_time > expiration_time) {
+          drop = true;  // 过期的键值对，标记为丢弃
+          dropped_keys_count ++; // 初始化计数器
+        }else{
+          bool flag = current_time > expiration_time;
+        }
+      }else{
+        bool bs = value.size() >= sizeof(uint64_t);
+      }
+      // if (!drop) {  // 如果还未被标记为丢弃
+      //   Slice value = input->value();
+      //   if (value.size() >= sizeof(uint64_t)) {
+      //     const char* ptr = value.data();
+      //     uint64_t expiration_time = DecodeFixed64(ptr);
+      //     uint64_t current_time = env_->NowMicros() / 1000000;
+
+      //     if (current_time > expiration_time) {
+      //       drop = true;  // 过期的键值对，标记为丢弃
+      //     }
+      //   }
+      // }
 
       last_sequence_for_key = ikey.sequence;
     }
+    Log(options_.info_log, "Total dropped keys in compaction: %d\n", dropped_keys_count); // 输出统计结果
+    total_keys_count++;
+
 #if 0
     Log(options_.info_log,
         "  Compact: %s, seq %d, type: %d %d, drop: %d, is_base: %d, "
@@ -1060,6 +1104,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
 
     input->Next();
   }
+
+  std::cout << "Total dropped keys in compaction:" << dropped_keys_count 
+    << ", Total: " << total_keys_count << "\n";
 
   if (status.ok() && shutting_down_.load(std::memory_order_acquire)) {
     status = Status::IOError("Deleting DB during compaction");
@@ -1206,7 +1253,7 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
     uint64_t current_time = GetCurrentTime();
 
     // 如果当前时间已经超过过期时间，则认为数据过期，返回 NotFound
-    if (current_time > expiration_time) {
+    if (current_time >= expiration_time) {
       s = Status::NotFound(Slice());
     } else {
       // 数据未过期，解析出实际的值
