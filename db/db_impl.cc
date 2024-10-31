@@ -621,7 +621,7 @@ void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
     }
   }
   TEST_CompactMemTable();  // TODO(sanjay): Skip if memtable does not overlap
-  for (int level = 0; level < max_level_with_files; level++) {
+  for (int level = 0; level <= max_level_with_files; level++) {
     TEST_CompactRange(level, begin, end);
   }
 }
@@ -935,6 +935,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   int dropped_keys_count = 0; // 初始化计数器
   int total_keys_count = 0;
 
+  std::cout << "Level 0: ";
+  for(int i=0;i<compact->compaction->num_input_files(0);i++) {
+    auto f = compact->compaction->input(0, i);
+    std::cout << f->number << " ";
+  }
+
   Log(options_.info_log, "Compacting %d@%d + %d@%d files",
       compact->compaction->num_input_files(0), compact->compaction->level(),
       compact->compaction->num_input_files(1),
@@ -1065,6 +1071,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
 
       last_sequence_for_key = ikey.sequence;
     }
+    input->SeekToLast();
+    std::cout << "Compation last key: " << input->key().ToString() << std::endl;
     Log(options_.info_log, "Total dropped keys in compaction: %d\n", dropped_keys_count); // 输出统计结果
     total_keys_count++;
 

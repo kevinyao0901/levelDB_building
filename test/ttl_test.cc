@@ -21,12 +21,15 @@ void PrintAllKeys(DB *db) {
     // 创建迭代器
     std::unique_ptr<Iterator> it(db->NewIterator(readOptions));
 
+    int cnt = 20;
+
     // 遍历所有键
-    for (it->SeekToFirst(); it->Valid(); it->Next()) {
-        // std::string key = it->key().ToString();
-        // std::string value = it->value().ToString();
-        // std::cout << "Key: " << key << std::endl;
+    for (it->SeekToFirst(); it->Valid()&&cnt; it->Next()) {
+        std::string key = it->key().ToString();
+        std::string value = it->value().ToString();
+        std::cout << "Key: " << key << std::endl;
         LeftKeyCount++;
+        cnt--;
     }
 
     // 检查迭代器的有效性
@@ -82,6 +85,8 @@ void InsertData(DB *db, uint64_t ttl/* second */) {
     Iterator* iter = db->NewIterator(ReadOptions());
     iter->SeekToFirst();
     std::cout << "Data base First key: " << iter->key().ToString() << std::endl;
+    iter->SeekToLast();
+    std::cout << "Data base last key: " << iter->key().ToString() << std::endl;
     delete iter;
 
   // 打印成功写入的唯一键的数量
@@ -115,7 +120,7 @@ void GetData(DB *db, int size = (1 << 30)) {
 
 }
 
-#if 0
+
 TEST(TestTTL, ReadTTL) {
     DB *db;
     if(OpenDB("testdb", &db).ok() == false) {
@@ -165,7 +170,7 @@ TEST(TestTTL, ReadTTL) {
     delete db;
 }
 
-#endif
+
 
 TEST(TestTTL, CompactionTTL) {
     DB *db;
