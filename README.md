@@ -447,7 +447,9 @@ int main(int argc, char** argv) {
 通过这个脚本，能够全面验证LevelDB的TTL功能和压缩清理机制。
 
 **运行结果截图：**
-![](.\result.png)
+
+
+![error](./result.png)
 
 
 
